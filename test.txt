@@ -1,0 +1,7 @@
+# hostname = 'hpc.mephi.ru'
+# username = 'dep_573_tmp01'
+# password = ''
+# Создаем туннель для подключения по SSH для определенного юзера
+# ssh_user = SSH(username, password, hostname=hostname)
+# dir = '/mnt/pool/1/dep_573_tmp01/'
+# ssh_user.ShowDir(dir)
