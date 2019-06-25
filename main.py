@@ -30,7 +30,8 @@ class MCU:
         self.summer_school_user_dir = '/mnt/pool/{0}/'.format(pool_dir_num)
 
     # Копируем все файлы MCU (исполняемый и MCU5.INI) на удаленную машину
-    def copy_mcu_to_remote_machine(self):
+    def copy_mcu_to_remote_machine(self, admin_login, admin_password):
+        self.set_admin_auth(admin_login, admin_password)
         ssh = SSH(self.admin_login, self.admin_pass)  # Создаем туннель для подключения по SSH для админа
         local_path_mcu = os.path.join('files', 'code', 'mcu00', 'mcu5', 'mcu5_free')
         dir_school = self.summer_school_exec_dir
@@ -64,6 +65,7 @@ class MCU:
     # Копируем входные файлы на удаленную машину в папку пользователя
     def copy_input_files_to_remote_machine(self, users_auth: list):
         local_path_burnup = os.path.join('files', 'input_files', 'runtest', 'burnup')
+        local_path_fn206 = os.path.join('files', 'input_files', 'fn206', 'fn206_1_125')
         local_path_sh = os.path.join('files', 'input_files', 'run.sh')
         local_path_ini = os.path.join('files', 'code', 'mcu00', 'MCU5.INI')
         # По очереди копируем входные файлы в каждую директорию на удаленном компьюере
@@ -93,18 +95,29 @@ class MCU:
                 ssh.chmod(user_dir, '711')
                 # Создаем папку mcu в директории /mnt/pool/1/dep_573_tmp00
                 ssh.create_dir(user_dir, 'mcu')
+
                 # Создаем папку runtest в директории /mnt/pool/1/dep_573_tmp00/mcu
                 ssh.create_dir(user_dir+'mcu', 'runtest')
+                # Создаем папку fn206 в директории /mnt/pool/1/dep_573_tmp00/mcu
+                ssh.create_dir(user_dir+'mcu', 'fn206')
+
                 # Копируем входной файл в папку runtest
                 runtest_folder = user_dir + 'mcu/runtest/'
                 # Полный путь до входного файла
                 remote_path = runtest_folder+'burnup'
-                ssh.upload_sftp(local_path_burnup, remote_path)  # Загружаем файл mcu5_free во все папки
+                ssh.upload_sftp(local_path_burnup, remote_path)  # Загружаем файл
+
+                # Копируем входной файл в папку fn206_1_125
+                runtest_folder = user_dir + 'mcu/fn206/'
+                # Полный путь до входного файла
+                remote_path = runtest_folder+'fn206_1_125'
+                ssh.upload_sftp(local_path_fn206, remote_path)  # Загружаем файл
 
                 # Теперь run.sh:
                 remote_path = user_dir + 'mcu/run.sh'
                 self.form_new_run_sh_file(local_path_sh, user_id_str)
                 self.convert_from_windows_to_unix(local_path_sh)
+
                 ssh.upload_sftp(local_path_sh, remote_path)  # Загружаем файл run.sh во все папки
                 # https://linuxrussia.com/terminal-chmod-chown.html
                 # Устанавливаем права на чтение и выполнение всеми, но на запись только владельцем (rwxr-xr-x)
@@ -114,7 +127,7 @@ class MCU:
                 # ssh.chmod(remote_path, 'ugo+x') # Убираем (минус) права для user, group, other на выполнение (eXecute)
 
                 # Теперь MCU5.INI:
-                remote_path = self.summer_school_exec_dir + 'mcu'+user_id_str + '/MCU5.INI'
+                remote_path = user_dir + 'mcu/MCU5.INI'
                 self.form_new_mcu5_ini_file(local_path_ini, user_id_str)
                 ssh.upload_sftp(local_path_ini, remote_path)  # Загружаем файл mcu5_free во все папки
                 # ssh.chmod(remote_path, 'ugo+rw') # Добавляем (плюс) права для user, group и other на чтение (read)
@@ -129,20 +142,27 @@ class MCU:
         file.write('#\n')
         file.write('#PBS -q short\n')
         file.write('#PBS -l nodes=1:ppn=1,walltime=00:15:00\n')
+        # cp /mnt/pool/1/dep_573_tmp01/mcu/MCU5.INI /mnt/pool/1/issaldikov/summer_school/mcu01/
         # cd /mnt/pool/2/issaldikov/summer_school/mcu00/
+        # Copying MCU5.INI file to executable folder
+        line = 'cp ' + self.summer_school_user_dir + \
+                   'dep_573_tmp' + user_id + '/mcu/MCU5.INI ' + \
+                   self.summer_school_exec_dir+'mcu'+user_id+'/\n'
+        file.write(line)
         file.write('cd '+self.summer_school_exec_dir+'mcu'+user_id+'/\n')
         # mpirun ./mcu5/mcu5_free 1>/mnt/pool/1/dep_573_tmp00/mcu/out.txt 2>/mnt/pool/1/dep_573_tmp00/mcu/err.txt
-        file.write('mpirun ./mcu5/mcu5_free 1>' + self.summer_school_user_dir
-                   + 'dep_573_tmp' + user_id + '/mcu/out.txt 2>' +
-                   self.summer_school_user_dir+'dep_573_tmp'+user_id+'/mcu/err.txt\n')
+        line = 'mpirun ./mcu5/mcu5_free 1>' + self.summer_school_user_dir + \
+                   'dep_573_tmp' + user_id + '/mcu/out.txt 2>' + \
+                   self.summer_school_user_dir+'dep_573_tmp'+user_id+'/mcu/err.txt\n'
+        file.write(line)
         file.close()
 
     # Формируем файл MCU5.INI каждый раз перед отправкой на сервер
     def form_new_mcu5_ini_file(self, path_to_mcu5ini, new_user_id_str):
         mcu5ini_file = open(path_to_mcu5ini, "w")
         # old_line = mcu5ini_file.readline()
-        # /mnt/pool/1/dep_573_tmp00/mcu/runtest/burnup
-        new_line = self.summer_school_user_dir + 'dep_573_tmp' + new_user_id_str + '/mcu/runtest/burnup'
+        # /mnt/pool/1/dep_573_tmp00/mcu/fn206/fn206_1_125
+        new_line = self.summer_school_user_dir + 'dep_573_tmp' + new_user_id_str + '/mcu/fn206/fn206_1_125'
         mcu5ini_file.writelines(new_line+'\n')
         # /mnt/pool/2/issaldikov/summer_school/MDBFREE50/
         mcu5ini_file.writelines(self.summer_school_exec_dir + 'MDBFREE50/\n')
@@ -150,11 +170,9 @@ class MCU:
         mcu5ini_file.close()
 
     # Задание параметров аккаунта администратора
-    def set_admin_auth(self, admin_user_login_pass)->bool:
-        admin_user_login_pass = admin_user_login_pass.strip()  # Удаляем символ перевода строки \n в конце строки
-        admin_data = admin_user_login_pass.split('   ')
-        self.admin_login = admin_data[0]
-        self.admin_pass = admin_data[1]
+    def set_admin_auth(self, admin_login, admin_password)->bool:
+        self.admin_login = admin_login
+        self.admin_pass = admin_password
         return True
 
     # Метод для получения списка пользователей из файла формата "login     password"
@@ -167,13 +185,21 @@ class MCU:
         file.close()
         return users_auth
 
-    # Получение логин-пароля админа из файла формата "login     password"
+    # Метод для сохранения данных аккаунтов пользователей из файла формата "login     password"
     @ staticmethod
-    def get_admin_auth_data(admin_pass_file_path)->str:
-        file = open(admin_pass_file_path, "r")
-        admin_user_login_pass = file.read().strip()
-        file.close()
-        return admin_user_login_pass
+    def save_user_auth_data_to_sep_files(users_auth: list) -> int:
+        i = 0
+        for user in users_auth:
+            string = '{:02}'.format(i)
+            user_name = 'dep_573_tmp'+string
+
+            filename = os.path.join('auth', 'user_data', user_name)
+            file = open(filename, 'w')
+            file.write(user)
+            file.close()
+            i += 1
+        return 0
+
 
     # Преобразуем файл из формата Windows в UNIX
     # (чтобы корректно запускался на удаленке, потому что разные переводы строк)
@@ -191,26 +217,50 @@ class MCU:
             open_file.write(content)
 
 
+# Общий класс для обработки информации
+class Common:
+    # Получение логин-пароля админа из файла формата "login     password"
+    @ staticmethod
+    def get_admin_auth_data(admin_pass_file_path)->str:
+        file = open(admin_pass_file_path, "r")
+        admin_user_login_pass = file.read().strip()
+        file.close()
+        return admin_user_login_pass
+
+    # Разделение строки на логин + пароль
+    def get_auth_from_str(self, input_str)->list:
+        auth_data = input_str.strip()  # Удаляем символ перевода строки \n в конце строки
+        res_list = auth_data.split('   ')
+        return res_list
+
+
+# Основная программа
 if __name__ == '__main__':
 
     print('Deploying started...!')
 
-    pool_dir_exec = 4  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
-    pool_dir_user = 3  # Номер pool-папки, в которой будет производится счет пользователями
+    pool_dir_exec = 1  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
+    pool_dir_user = 1  # Номер pool-папки, в которой будет производится счет пользователями
     number_of_users = 30  # Максимальное кол-во пользователей
-    mcu = MCU(pool_dir_exec, pool_dir_user, number_of_users)
+    common = Common()
 
     admin_auth_file_path = os.path.join('auth', 'admin.txt')
-    admin_user = mcu.get_admin_auth_data(admin_auth_file_path)
-    # Устанавливаем данные для доступа для админа
-    mcu.set_admin_auth(admin_user)
+    admin_user = common.get_admin_auth_data(admin_auth_file_path)
+    # Получаем данные для доступа для админа
+    admin_data = common.get_auth_from_str(admin_user)
+    admin_login = admin_data[0]
+    admin_password = admin_data[1]
 
-    # Развертываем MCU на кластере в pool # pool_dir_exec
-    mcu.copy_mcu_to_remote_machine()
+    # Развертываем MCU на кластере в pool
+    mcu = MCU(pool_dir_exec, pool_dir_user, number_of_users)
+    mcu.copy_mcu_to_remote_machine(admin_login, admin_password)
 
     user_auth_file_path = os.path.join('auth', 'users.txt')
+
     # Считываем данные по логин-паролям пользователей
     users = mcu.get_user_auth_data(user_auth_file_path)
+    # Сохраняем логин-пароли по отдельным файлам
+    # mcu.save_user_auth_data_to_sep_files(users)
 
     # Развертываем входные файлы на кластере в pool № pool_dir_user
     mcu.copy_input_files_to_remote_machine(users)
