@@ -11,12 +11,14 @@ class MCU:
     summer_school_user_dir = '/mnt/pool/1/'
     pool_dir_exec: int = 2  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
     pool_dir_user: int = 1  # Номер pool-папки, в которой будет производится счет пользователями
-    number_of_users = 30  # Кол-во пользователей (from 00 to 29)
+    starting_user = -1  # Стартовый пользователь
+    number_of_users = -1  # Кол-во пользователей (from 00 to 29)
 
     # Конструктор
-    def __init__(self, pool_dir_exec_in, pool_dir_user_in, number_of_users_in):
+    def __init__(self, pool_dir_exec_in, pool_dir_user_in, starting_user_in, number_of_users_in):
         self.pool_dir_exec = pool_dir_exec_in
         self.pool_dir_user = pool_dir_user_in
+        self.starting_user = starting_user_in
         self.number_of_users = number_of_users_in
         self.set_executable_dir(self.pool_dir_exec)  # Задаем текущий каталог для развертывания экзешников
         self.set_user_dir(self.pool_dir_user)  # Задаем текущий pool-каталог для развертывания входных файлов
@@ -69,7 +71,7 @@ class MCU:
         local_path_sh = os.path.join('files', 'input_files', 'run.sh')
         local_path_ini = os.path.join('files', 'code', 'mcu00', 'MCU5.INI')
         # По очереди копируем входные файлы в каждую директорию на удаленном компьюере
-        for i in range(1, self.number_of_users):
+        for i in range(self.starting_user, self.number_of_users):
             user_data = users_auth[i].strip()  # Удаляем символ перевода строки \n в конце строки
             user_data = user_data.split('   ')
             login = user_data[0]
@@ -241,6 +243,7 @@ if __name__ == '__main__':
 
     pool_dir_exec = 1  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
     pool_dir_user = 1  # Номер pool-папки, в которой будет производится счет пользователями
+    sterting_user = 29  # Начальное значение пользователя
     number_of_users = 30  # Максимальное кол-во пользователей
     common = Common()
 
@@ -252,8 +255,8 @@ if __name__ == '__main__':
     admin_password = admin_data[1]
 
     # Развертываем MCU на кластере в pool
-    mcu = MCU(pool_dir_exec, pool_dir_user, number_of_users)
-    mcu.copy_mcu_to_remote_machine(admin_login, admin_password)
+    mcu = MCU(pool_dir_exec, pool_dir_user, sterting_user, number_of_users)
+    #mcu.copy_mcu_to_remote_machine(admin_login, admin_password)
 
     user_auth_file_path = os.path.join('auth', 'users.txt')
 
