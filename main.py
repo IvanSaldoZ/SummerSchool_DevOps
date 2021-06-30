@@ -7,12 +7,12 @@ from paramiko import BadAuthenticationType  # Для отлова исключе
 class MCU:
     admin_login = 'issaldikov'
     admin_pass = ''
-    summer_school_exec_dir = '/mnt/pool/2/issaldikov/summer_school/'
-    summer_school_user_dir = '/mnt/pool/1/'
-    pool_dir_exec: int = 2  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
-    pool_dir_user: int = 1  # Номер pool-папки, в которой будет производится счет пользователями
+    summer_school_exec_dir: str
+    summer_school_user_dir: str
+    pool_dir_exec: int = 4  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
+    pool_dir_user: int = 3  # Номер pool-папки, в которой будет производится счет пользователями
     starting_user = -1  # Стартовый пользователь
-    number_of_users = -1  # Кол-во пользователей (from 00 to 29)
+    number_of_users = -1  # Кол-во пользователей (from 00 to 59)
 
     # Конструктор
     def __init__(self, pool_dir_exec_in, pool_dir_user_in, starting_user_in, number_of_users_in):
@@ -179,7 +179,7 @@ class MCU:
 
     # Метод для получения списка пользователей из файла формата "login     password"
     @ staticmethod
-    def get_user_auth_data(user_pass_file_path)->list:
+    def get_user_auth_data(user_pass_file_path) -> list:
         file = open(user_pass_file_path, "r")
         users_auth = []
         for line in file.readlines():
@@ -241,10 +241,10 @@ if __name__ == '__main__':
 
     print('Deploying started...!')
 
-    pool_dir_exec = 1  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
-    pool_dir_user = 1  # Номер pool-папки, в которой будет производится счет пользователями
-    sterting_user = 29  # Начальное значение пользователя
-    number_of_users = 30  # Максимальное кол-во пользователей
+    pool_dir_exec = 4  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
+    pool_dir_user = 3  # Номер pool-папки, в которой будет производится счет пользователями
+    starting_user = 1  # Начальное значение пользователя
+    number_of_users = 59  # Максимальное кол-во пользователей
     common = Common()
 
     admin_auth_file_path = os.path.join('auth', 'admin.txt')
@@ -255,7 +255,7 @@ if __name__ == '__main__':
     admin_password = admin_data[1]
 
     # Развертываем MCU на кластере в pool
-    mcu = MCU(pool_dir_exec, pool_dir_user, sterting_user, number_of_users)
+    mcu = MCU(pool_dir_exec, pool_dir_user, starting_user, number_of_users)
     #mcu.copy_mcu_to_remote_machine(admin_login, admin_password)
 
     user_auth_file_path = os.path.join('auth', 'users.txt')
@@ -263,7 +263,7 @@ if __name__ == '__main__':
     # Считываем данные по логин-паролям пользователей
     users = mcu.get_user_auth_data(user_auth_file_path)
     # Сохраняем логин-пароли по отдельным файлам
-    # mcu.save_user_auth_data_to_sep_files(users)
+    mcu.save_user_auth_data_to_sep_files(users)
 
     # Развертываем входные файлы на кластере в pool № pool_dir_user
     mcu.copy_input_files_to_remote_machine(users)
