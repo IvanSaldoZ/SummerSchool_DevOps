@@ -1,8 +1,10 @@
 import time
-
-from helpers.ssh import SSH
 import os
+import configparser
+from pprint import pprint
+
 from paramiko import BadAuthenticationType  # Для отлова исключения при подключении к кластеру
+from helpers.ssh import SSH
 
 
 # Класс для развертывания MCU на удаленном компьютере (кластере МИФИ)
@@ -67,13 +69,13 @@ class MCU:
             ssh.chmod(mcu5_folder, '-R 711')  # rwx--x--x: выполнение для всех, чтение и запись только для владельца
 
     # Копируем входные файлы на удаленную машину в папку пользователя
-    def copy_input_files_to_remote_machine(self, users_auth: list):
+    def copy_input_files_to_remote_machine(self, users_auth: list, common_obj):
         local_path_burnup = os.path.join('files', 'input_files', 'runtest', 'burnup')
         local_path_fn206 = os.path.join('files', 'input_files', 'fn206', 'fn206_1_125')
         local_path_sh = os.path.join('files', 'input_files', 'run.sh')
-        local_path_ini = os.path.join('files', 'code', 'mcu00', 'MCU5.INI')
+        local_path_ini = os.path.join('files', 'input_files', 'MCU5.INI')
         # По очереди копируем входные файлы в каждую директорию на удаленном компьюере
-        for i in range(self.starting_user, self.number_of_users):
+        for i in range(self.starting_user, self.number_of_users+1):
             user_data = users_auth[i].strip()  # Удаляем символ перевода строки \n в конце строки
             user_data = user_data.split('\t')  # Разделяем строку по Tab-у
             login = user_data[0]
@@ -82,7 +84,9 @@ class MCU:
             print('INFO: Copying input files to remote machine for user '+login)
             try:
                 # Создаем туннель для подключения по SSH для пользователя
-                ssh = SSH(username=login, password=password)
+                ssh = SSH(username=login,
+                          password=password,
+                          is_proxy=common_obj.settings['proxy_enabled'])
             # Если такого пользователя нет
             except BadAuthenticationType:
                 ssh = False
@@ -141,11 +145,13 @@ class MCU:
                     # и запись (write)
                     # ssh.chmod(remote_path, 'ugo-x') # Убираем (минус) права для user, group, other на выполнение (eXecute)
                     ssh.chmod(remote_path, '666')  # rw-rw-rw-, т.е. чтение и запись для всех, выполнение - ни для кого
+                    # Сохраняем в файл последний удачно пройденный номер пользователя
+                    common_obj.save_settings('starting_user', str(i+1))
                 finally:
                     # Закрываем соединение
                     ssh.close_connection()
                     print('Sleeping before another connection...')
-                    time.sleep(15)
+                    time.sleep(5)
             # END  for i in range(self.starting_user, self.number_of_users):
 
     # Формируем файл run.sh каждый раз перед отправкой на сервер
@@ -156,17 +162,6 @@ class MCU:
         file.write('#SBATCH --ntasks=1\n')
         file.write('#SBATCH --tasks-per-node=1\n')
         file.write('#SBATCH --time=05:00:00\n')
-        # mpirun -mca btl ^openib /mnt/pool/4/issaldikov/summer_school/mcu01/mcu5/mcu5_free MCU5.INI | tee MCU5.log."$SLURM_JOBID"
-        # Copying MCU5.INI file to executable folder
-        # line = 'cp ' + self.summer_school_user_dir + \
-        #            'dep_573_tmp' + user_id + '/mcu/MCU5.INI ' + \
-        #            self.summer_school_exec_dir+'mcu'+user_id+'/\n'
-        # file.write(line)
-        # file.write('cd '+self.summer_school_exec_dir+'mcu'+user_id+'/\n')
-        # mpirun ./mcu5/mcu5_free 1>/mnt/pool/1/dep_573_tmp00/mcu/out.txt 2>/mnt/pool/1/dep_573_tmp00/mcu/err.txt
-        # line = 'mpirun ./mcu5/mcu5_free 1>' + self.summer_school_user_dir + \
-        #            'dep_573_tmp' + user_id + '/mcu/out.txt 2>' + \
-        #            self.summer_school_user_dir+'dep_573_tmp'+user_id+'/mcu/err.txt\n'
         line = 'mpirun -mca btl ^openib /mnt/pool/4/issaldikov/summer_school/mcu01/mcu5/mcu5_free MCU5.INI | tee MCU5.log."$SLURM_JOBID"'
         file.write(line)
         file.close()
@@ -212,6 +207,7 @@ class MCU:
             file.write(user)
             file.close()
             i += 1
+        print('Auth user data is saved to different files successfully')
         return 0
 
 
@@ -231,9 +227,15 @@ class MCU:
             open_file.write(content)
 
 
-# Общий класс для обработки информации
 class Common:
-    # Получение логин-пароля админа из файла формата "login     password"
+    """
+    Общий класс для обработки информации
+    """
+    def __init__(self):
+        self.settings = {}
+        self.config_file_name = 'config.ini'
+
+    # Получение логин-пароля админа из файла формата "login   password"
     @ staticmethod
     def get_admin_auth_data(admin_pass_file_path) -> str:
         file = open(admin_pass_file_path, "r")
@@ -247,17 +249,55 @@ class Common:
         res_list = auth_data.split('\t')
         return res_list
 
+    # Читаем настройки
+    def get_settings(self):
+        config = configparser.ConfigParser()
+        config.read(self.config_file_name)
+        # Номер pool-папки, в которой развертываем исполняемые файлы mcu
+        self.settings['pool_dir_exec'] = config.getint("Settings", "pool_dir_exec")
+        # Номер pool-папки, в которой будет производится счет пользователями
+        self.settings['pool_dir_user'] = config.getint("Settings", "pool_dir_user")
+        # Начальное значение пользователя
+        self.settings['starting_user'] = config.getint("Settings", "starting_user")
+        # Максимальное кол-во пользователей
+        self.settings['number_of_users'] = config.getint("Settings", "number_of_users")
+        # Максимальное кол-во пользователей
+        self.settings['proxy_enabled'] = config.getboolean("Settings", "proxy_enabled")
+
+    def save_settings(self, key, value):
+        """
+        Сохраняем настройку в файл
+        :param key:
+        :param value:
+        :return:
+        """
+        config = configparser.ConfigParser()
+        config.read(self.config_file_name)
+        # Меняем значения из конфиг. файла.
+        config.set("Settings", key, value)
+        # Вносим изменения в конфиг. файл.
+        with open(self.config_file_name, "w") as config_file:
+            config.write(config_file)
+
 
 # Основная программа
 if __name__ == '__main__':
 
     print('Deploying started...!')
-
-    pool_dir_exec = 4  # Номер pool-папки, в которой развертываем исполняемые файлы mcu
-    pool_dir_user = 3  # Номер pool-папки, в которой будет производится счет пользователями
-    starting_user = 18  # Начальное значение пользователя
-    number_of_users = 59  # Максимальное кол-во пользователей
     common = Common()
+    common.get_settings()
+
+    # Номер pool-папки, в которой развертываем исполняемые файлы mcu
+    pool_dir_exec = common.settings['pool_dir_exec']
+    # Номер pool-папки, в которой будет производится счет пользователями
+    pool_dir_user = common.settings['pool_dir_user']
+    # Начальное значение пользователя
+    starting_user = common.settings['starting_user']
+    # Максимальное кол-во пользователей
+    number_of_users = common.settings['number_of_users']
+
+    print('Settings:')
+    pprint(common.settings)
 
     admin_auth_file_path = os.path.join('auth', 'admin.txt')
     admin_user = common.get_admin_auth_data(admin_auth_file_path)
@@ -265,6 +305,7 @@ if __name__ == '__main__':
     admin_data = common.get_auth_from_str(admin_user)
     admin_login = admin_data[0]
     admin_password = admin_data[1]
+    print('Auth Admin data is loaded successfully!')
 
     # Развертываем MCU на кластере в pool
     mcu = MCU(pool_dir_exec, pool_dir_user, starting_user, number_of_users)
@@ -275,10 +316,11 @@ if __name__ == '__main__':
 
     # Считываем данные по логин-паролям пользователей
     users = mcu.get_user_auth_data(user_auth_file_path)
+    print('Auth user data is loaded successfully')
     # Сохраняем логин-пароли по отдельным файлам
-    mcu.save_user_auth_data_to_sep_files(users)
+    #mcu.save_user_auth_data_to_sep_files(users)
 
     # Развертываем входные файлы на кластере в pool № pool_dir_user
-    mcu.copy_input_files_to_remote_machine(users)
+    mcu.copy_input_files_to_remote_machine(users, common)
 
     print('Deploying finished!')
