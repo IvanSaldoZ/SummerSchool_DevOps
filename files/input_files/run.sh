@@ -1,7 +1,6 @@
 #!/bin/bash
 #
-#PBS -q short
-#PBS -l nodes=1:ppn=1,walltime=00:15:00
-cp /mnt/pool/1/dep_573_tmp28/mcu/MCU5.INI /mnt/pool/1/issaldikov/summer_school/mcu28/
-cd /mnt/pool/1/issaldikov/summer_school/mcu28/
-mpirun ./mcu5/mcu5_free 1>/mnt/pool/1/dep_573_tmp28/mcu/out.txt 2>/mnt/pool/1/dep_573_tmp28/mcu/err.txt
+#SBATCH --ntasks=1
+#SBATCH --tasks-per-node=1
+#SBATCH --time=05:00:00
+mpirun -mca btl ^openib /mnt/pool/4/issaldikov/summer_school/mcu01/mcu5/mcu5_free MCU5.INI | tee MCU5.log."$SLURM_JOBID"
