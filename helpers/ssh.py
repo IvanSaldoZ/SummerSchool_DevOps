@@ -1,14 +1,30 @@
 import paramiko
-
+import socks  # pip install PySocks
 
 class SSH:
 
     # Конструктор - инициализация параметров подключения и подключение к удаленному компьютеру
-    def __init__(self, username, password, hostname='hpc.mephi.ru'):
+    def __init__(self, username, password, hostname='hpc.mephi.ru', is_proxy=False):
+        sock = None
+        # Список прокси: https://hidemy.name/ru/proxy-list/?type=5#list
+        if is_proxy:
+            proxy_address, proxy_ip = self.get_proxy_addr_and_ip()
+            sock = socks.socksocket()
+            sock.set_proxy(
+                proxy_type=socks.SOCKS5,
+                addr=proxy_address,
+                port=int(proxy_ip),
+                username="",
+                password=""
+            )
+            sock.connect((hostname, 22))
+
+        self.sock = sock
         self.hostname = hostname
         self.username = username
         self.password = password
         self.client = paramiko.SSHClient()
+        self.client.known_hosts = None
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
 
     def open_connection(self):
@@ -16,7 +32,11 @@ class SSH:
         Открываем соединение
         :return:
         """
-        self.client.connect(hostname=self.hostname, username=self.username, password=self.password, port=22)
+        self.client.connect(hostname=self.hostname,
+                            username=self.username,
+                            password=self.password,
+                            port=22,
+                            sock=self.sock)
 
     def close_connection(self):
         """
@@ -24,6 +44,19 @@ class SSH:
         :return:
         """
         self.client.close()
+
+    def get_proxy_addr_and_ip(self):
+        """
+        Читаем прокси SOCKS5 из первой строки файла в формате IP:port
+        """
+        try:
+            with open('proxies.txt', "rt") as f:
+                # ищем первый прокси
+                first_proxy = f.readlines()[0].strip()
+            ret = first_proxy.split(':')
+            return ret
+        except:
+            return None
 
     # Показываем содержимое определенного каталога на удаленном сервере
     def show_dir(self, dir):
