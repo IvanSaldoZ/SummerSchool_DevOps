@@ -10,7 +10,20 @@ class SSH:
         self.password = password
         self.client = paramiko.SSHClient()
         self.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    def open_connection(self):
+        """
+        Открываем соединение
+        :return:
+        """
         self.client.connect(hostname=self.hostname, username=self.username, password=self.password, port=22)
+
+    def close_connection(self):
+        """
+        Закрываем соединение, чтобы не банили
+        :return:
+        """
+        self.client.close()
 
     # Показываем содержимое определенного каталога на удаленном сервере
     def show_dir(self, dir):
@@ -52,4 +65,4 @@ class SSH:
         sftp.close()
 
     def __del__(self):
-        self.client.close()
+        self.close_connection()
